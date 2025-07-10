@@ -9,6 +9,79 @@ let customizeMode = false;
 let widgetOrder = ['hourly-productivity', 'deck-progress', 'zone-allocation', 'hourly-tracker'];
 let enabledWidgets = new Set(['hourly-productivity', 'deck-progress', 'zone-allocation', 'hourly-tracker']);
 
+// Enhanced error handling and notification system
+function showErrorNotification(message, duration = 5000) {
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 max-w-sm';
+    notification.innerHTML = `
+        <div class="flex items-center">
+            <i class="fas fa-exclamation-triangle mr-2"></i>
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, duration);
+}
+
+function showSuccessNotification(message, duration = 3000) {
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 max-w-sm';
+    notification.innerHTML = `
+        <div class="flex items-center">
+            <i class="fas fa-check-circle mr-2"></i>
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, duration);
+}
+
+// Offline functionality setup
+function setupOfflineHandlers() {
+    // Listen for service worker messages
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', event => {
+            const { action, data } = event.data;
+            
+            if (action === 'SYNC_DATA' && currentShipId) {
+                loadShipData(currentShipId);
+            }
+        });
+    }
+    
+    // Handle online/offline status changes
+    window.addEventListener('online', () => {
+        console.log('Back online - refreshing ship data');
+        showSuccessNotification('Reconnected! Syncing latest data...');
+        if (currentShipId) {
+            loadShipData(currentShipId);
+        }
+    });
+    
+    window.addEventListener('offline', () => {
+        console.log('Gone offline - using cached data');
+        showErrorNotification('You are now offline. Some features may be limited.', 3000);
+    });
+}
+
 // Global variables for auto-update
 let autoUpdateInterval;
 let currentShipId = null;
@@ -18,6 +91,11 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing Ship Info Dashboard...');
     
     try {
+        // Initialize offline functionality first
+        if (window.offlineStorage) {
+            setupOfflineHandlers();
+        }
+        
         const urlParams = new URLSearchParams(window.location.search);
         const shipId = urlParams.get('ship');
         
@@ -567,26 +645,66 @@ function populateShipData(ship) {
 async function loadShipData(shipId) {
     console.log('Attempting to load ship data for ID:', shipId);
     try {
-        const response = await fetch(`/api/ships/${shipId}`);
-        if (response.ok) {
-            const shipData = await response.json();
-            console.log('Received ship data:', shipData);
-            if (shipData && shipData.id) {
-                currentShip = shipData;
-                populateShipData(shipData);
-                initializeData();
-                setTimeout(() => {
-                    initializeCharts();
-                }, 100);
-
-                   startAutoUpdate();
-                return;
+        let shipData;
+        
+        // Use offline storage manager if available
+        if (window.offlineStorage) {
+            const allShips = await window.offlineStorage.apiCall('/api/ships');
+            shipData = allShips.find(ship => ship.id == shipId);
+        } else {
+            const response = await fetch(`/api/ships/${shipId}`);
+            if (response.ok) {
+                shipData = await response.json();
+            } else {
+                throw new Error(`HTTP ${response.status}`);
             }
         }
-        console.log('No valid ship data found, loading default state');
-        loadSampleShipData();
+        
+        console.log('Received ship data:', shipData);
+        if (shipData && shipData.id) {
+            currentShip = shipData;
+            populateShipData(shipData);
+            initializeData();
+            setTimeout(() => {
+                initializeCharts();
+            }, 100);
+
+            startAutoUpdate();
+            
+            // Show offline indicator if data is from cache
+            if (!navigator.onLine) {
+                showErrorNotification('Displaying cached data (offline)', 2000);
+            }
+            return;
+        } else {
+            throw new Error('Ship not found');
+        }
     } catch (error) {
         console.error('Error loading ship data:', error);
+        
+        // Try to get cached data from local storage as fallback
+        try {
+            const cachedShips = localStorage.getItem('ships_data_v2');
+            if (cachedShips) {
+                const ships = JSON.parse(cachedShips);
+                const cachedShip = ships.find(ship => ship.id == shipId);
+                if (cachedShip) {
+                    currentShip = cachedShip;
+                    populateShipData(cachedShip);
+                    initializeData();
+                    setTimeout(() => {
+                        initializeCharts();
+                    }, 100);
+                    showErrorNotification('Showing cached ship data', 3000);
+                    return;
+                }
+            }
+        } catch (cacheError) {
+            console.error('Error loading cached data:', cacheError);
+        }
+        
+        console.log('No valid ship data found, loading default state');
+        showErrorNotification('Unable to load ship data: ' + error.message);
         loadSampleShipData();
     }
 }

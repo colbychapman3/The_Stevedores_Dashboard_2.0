@@ -1,13 +1,20 @@
 // Global variables
 let ships = [];
 let refreshInterval;
+let charts = {};
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', function() {
     updateCurrentTime();
     setInterval(updateCurrentTime, 1000);
+    initializeCharts();
     loadShips();
     refreshInterval = setInterval(loadShips, 30000); // Refresh every 30 seconds
+    
+    // Initialize offline functionality
+    if (window.offlineStorage) {
+        setupOfflineHandlers();
+    }
 });
 
 function updateCurrentTime() {
@@ -17,21 +24,34 @@ function updateCurrentTime() {
 
 async function loadShips() {
     try {
-        const response = await fetch('/api/ships');
-        if (response.ok) {
-            ships = await response.json();
-            updateDashboard();
-            return Promise.resolve();
+        // Use offline storage manager if available
+        if (window.offlineStorage) {
+            ships = await window.offlineStorage.apiCall('/api/ships');
         } else {
-            console.error('Failed to load ships');
-            ships = [];
-            updateDashboard();
-            return Promise.resolve();
+            const response = await fetch('/api/ships');
+            if (response.ok) {
+                ships = await response.json();
+            } else {
+                throw new Error('Failed to load ships');
+            }
         }
+        
+        updateDashboard();
+        updateCharts();
+        return Promise.resolve();
     } catch (error) {
         console.error('Error loading ships:', error);
-        ships = [];
+        
+        // Fallback to local storage if offline storage manager not available
+        const cachedShips = localStorage.getItem('ships_data_v2');
+        if (cachedShips) {
+            ships = JSON.parse(cachedShips);
+        } else {
+            ships = [];
+        }
+        
         updateDashboard();
+        updateCharts();
         return Promise.resolve();
     }
 }
@@ -40,6 +60,7 @@ function updateDashboard() {
     updateStats();
     updateBerthMap();
     renderShips();
+    updateCharts();
 }
 
 function updateStats() {
@@ -195,55 +216,68 @@ function createNewOperation() {
     alert('New operation creation will be implemented soon!');
 }
 
-function handleMasterFileUpload(event) {
+async function handleMasterFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
     document.getElementById('masterUploadStatus').classList.remove('hidden');
     document.getElementById('masterUploadSuccess').classList.add('hidden');
 
-    const formData = new FormData();
-    formData.append('file', file);
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
 
-    fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            return fetch('/api/extract', {
+        // Use offline storage manager for consistent handling
+        let uploadResult;
+        if (window.offlineStorage && window.offlineStorage.isOnline()) {
+            const response = await fetch('/api/upload', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    file_path: data.file_path
-                })
+                body: formData
             });
+            uploadResult = await response.json();
         } else {
-            throw new Error(data.error || 'Upload failed');
+            throw new Error('File upload requires internet connection');
         }
-    })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('masterUploadStatus').classList.add('hidden');
-        if (data.success) {
-            document.getElementById('masterUploadSuccess').classList.remove('hidden');
-            console.log('Document processed successfully:', data.parsed_data);
-            // Optionally redirect to wizard with extracted data
-            if (confirm('Document processed successfully! Would you like to create a new operation with this data?')) {
-                window.location.href = '/';
+
+        if (uploadResult.success) {
+            const extractResult = await (window.offlineStorage ? 
+                window.offlineStorage.apiCall('/api/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: { file_path: uploadResult.file_path }
+                }) :
+                fetch('/api/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_path: uploadResult.file_path })
+                }).then(r => r.json())
+            );
+
+            document.getElementById('masterUploadStatus').classList.add('hidden');
+            if (extractResult.success) {
+                document.getElementById('masterUploadSuccess').classList.remove('hidden');
+                console.log('Document processed successfully:', extractResult.parsed_data);
+                
+                if (confirm('Document processed successfully! Would you like to create a new operation with this data?')) {
+                    window.location.href = '/';
+                }
+            } else {
+                throw new Error(extractResult.error || 'Extraction failed');
             }
         } else {
-            throw new Error(data.error || 'Extraction failed');
+            throw new Error(uploadResult.error || 'Upload failed');
         }
-    })
-    .catch(error => {
+    } catch (error) {
         document.getElementById('masterUploadStatus').classList.add('hidden');
-        alert('Error processing document: ' + error.message);
+        
+        // Show offline-specific error if applicable
+        const errorMessage = !navigator.onLine ? 
+            'File upload is not available offline. Please connect to the internet and try again.' :
+            'Error processing document: ' + error.message;
+            
+        alert(errorMessage);
         console.error('Error:', error);
-    });
+    }
 }
 
 function goToCalendar() {
@@ -283,34 +317,47 @@ async function markShipComplete(shipId) {
     }
 
     try {
-        const response = await fetch(`/api/ships/${shipId}/status`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                status: 'complete'
-            })
-        });
-
-        if (response.ok) {
-            // Also update progress to 100%
-            await fetch(`/api/ships/${shipId}/progress`, {
+        // Use offline storage manager for consistent offline/online handling
+        if (window.offlineStorage) {
+            await window.offlineStorage.apiCall(`/api/ships/${shipId}/status`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    progress: 100
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: { status: 'complete' }
+            });
+            
+            await window.offlineStorage.apiCall(`/api/ships/${shipId}/progress`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: { progress: 100 }
+            });
+            
+            // Update local data immediately
+            const ship = ships.find(s => s.id === shipId);
+            if (ship) {
+                ship.status = 'complete';
+                ship.progress = 100;
+            }
+        } else {
+            const response = await fetch(`/api/ships/${shipId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'complete' })
             });
 
-            loadShips(); // Refresh the dashboard
-            alert('Ship operation marked as complete!');
-        } else {
-            const error = await response.json();
-            alert('Error marking ship complete: ' + (error.error || 'Unknown error'));
+            if (response.ok) {
+                await fetch(`/api/ships/${shipId}/progress`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ progress: 100 })
+                });
+            } else {
+                const error = await response.json();
+                throw new Error(error.error || 'Unknown error');
+            }
         }
+
+        loadShips(); // Refresh the dashboard
+        alert('Ship operation marked as complete!');
     } catch (error) {
         console.error('Error marking ship complete:', error);
         alert('Error marking ship complete: ' + error.message);
@@ -604,4 +651,154 @@ function showModal(title, content) {
     });
 
     document.body.appendChild(modal);
+}
+
+// Chart initialization and management
+function initializeCharts() {
+    // Initialize progress overview chart
+    const progressCtx = document.getElementById('progressChart');
+    if (progressCtx) {
+        charts.progress = new Chart(progressCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['In Progress', 'Loading', 'Discharge', 'Complete'],
+                datasets: [{
+                    data: [0, 0, 0, 0],
+                    backgroundColor: [
+                        '#3b82f6', // blue
+                        '#f59e0b', // amber
+                        '#10b981', // emerald
+                        '#6b7280'  // gray
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Initialize vehicle distribution chart
+    const vehicleCtx = document.getElementById('vehicleChart');
+    if (vehicleCtx) {
+        charts.vehicle = new Chart(vehicleCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Automobiles', 'Heavy Equipment', 'Electric Vehicles'],
+                datasets: [{
+                    label: 'Total Units',
+                    data: [0, 0, 0],
+                    backgroundColor: [
+                        '#3b82f6',
+                        '#f59e0b',
+                        '#10b981'
+                    ],
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+function updateCharts() {
+    if (!ships || ships.length === 0) {
+        // Reset charts when no data
+        if (charts.progress) {
+            charts.progress.data.datasets[0].data = [0, 0, 0, 0];
+            charts.progress.update();
+        }
+        if (charts.vehicle) {
+            charts.vehicle.data.datasets[0].data = [0, 0, 0];
+            charts.vehicle.update();
+        }
+        return;
+    }
+
+    // Update progress chart
+    if (charts.progress) {
+        const statusCounts = {
+            active: ships.filter(s => s.status === 'active').length,
+            loading: ships.filter(s => s.status === 'loading').length,
+            discharge: ships.filter(s => s.status === 'discharge').length,
+            complete: ships.filter(s => s.status === 'complete').length
+        };
+        
+        charts.progress.data.datasets[0].data = [
+            statusCounts.active,
+            statusCounts.loading,
+            statusCounts.discharge,
+            statusCounts.complete
+        ];
+        charts.progress.update();
+    }
+
+    // Update vehicle distribution chart
+    if (charts.vehicle) {
+        const vehicleTotals = {
+            automobiles: ships.reduce((sum, ship) => sum + (ship.totalAutomobilesDischarge || 0), 0),
+            heavyEquipment: ships.reduce((sum, ship) => sum + (ship.heavyEquipmentDischarge || 0), 0),
+            electricVehicles: ships.reduce((sum, ship) => sum + (ship.totalElectricVehicles || 0), 0)
+        };
+        
+        charts.vehicle.data.datasets[0].data = [
+            vehicleTotals.automobiles,
+            vehicleTotals.heavyEquipment,
+            vehicleTotals.electricVehicles
+        ];
+        charts.vehicle.update();
+    }
+}
+
+// Offline functionality setup
+function setupOfflineHandlers() {
+    // Listen for service worker messages
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', event => {
+            const { action, data } = event.data;
+            
+            if (action === 'SYNC_DATA') {
+                loadShips();
+            }
+        });
+    }
+    
+    // Handle online/offline status changes
+    window.addEventListener('online', () => {
+        console.log('Back online - refreshing data');
+        loadShips();
+    });
+    
+    window.addEventListener('offline', () => {
+        console.log('Gone offline - using cached data');
+    });
 }
