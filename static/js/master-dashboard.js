@@ -760,6 +760,14 @@ function updateCharts() {
             statusCounts.complete
         ];
         charts.progress.update();
+        
+        // Emit chart update event for widget communication
+        if (window.widgetManager) {
+            window.widgetManager.emit('chartUpdate', {
+                chartType: 'progress',
+                data: statusCounts
+            });
+        }
     }
 
     // Update vehicle distribution chart
@@ -776,6 +784,14 @@ function updateCharts() {
             vehicleTotals.electricVehicles
         ];
         charts.vehicle.update();
+        
+        // Emit chart update event for widget communication
+        if (window.widgetManager) {
+            window.widgetManager.emit('chartUpdate', {
+                chartType: 'vehicle',
+                data: vehicleTotals
+            });
+        }
     }
 }
 
