@@ -1349,38 +1349,6 @@ function goToMaster() {
     }
 }
 
-function updateProgress() {
-    if (!currentShip) {
-        alert('No ship data available. Please refresh the page or select a ship operation.');
-        return;
-    }
-
-    const currentProgress = currentShip.progress || 0;
-    const newProgress = prompt(`Enter new progress percentage (current: ${currentProgress}%):`, currentProgress);
-
-    if (newProgress === null || newProgress === '') return;
-
-    const progress = parseFloat(newProgress);
-    if (isNaN(progress) || progress < 0 || progress > 100) {
-        alert('Please enter a valid percentage between 0 and 100');
-        return;
-    }
-
-    if (!currentShip.id) {
-        // If no ship ID, just update locally
-        currentShip.progress = progress;
-        document.getElementById('completionValue').textContent = `${progress}%`;
-        const calculatedProgressElement = document.getElementById('calculatedProgress');
-        if (calculatedProgressElement) {
-            calculatedProgressElement.textContent = `${progress}%`;
-        }
-        alert('Progress updated locally!');
-        console.log('Progress updated locally to:', progress + '%');
-        return;
-    }
-
-    updateShipProgress(progress);
-}
 
 async function updateShipProgress(progress) {
     try {
@@ -2262,38 +2230,6 @@ function updateEfficiencyDisplay(efficiency) {
     }
 }
 
-// Enhanced toggle widget function with widget system integration
-function toggleWidget(widgetId) {
-    const widgetElement = document.querySelector(`[data-widget-id="${widgetId}"]`);
-    if (!widgetElement) {
-        console.warn(`Widget with ID ${widgetId} not found`);
-        return;
-    }
-
-    const widget = registeredWidgets.get(widgetId);
-    
-    if (enabledWidgets.has(widgetId)) {
-        enabledWidgets.delete(widgetId);
-        widgetElement.classList.add('widget-disabled');
-        if (widget) widget.hide();
-        console.log(`Widget ${widgetId} disabled`);
-    } else {
-        enabledWidgets.add(widgetId);
-        widgetElement.classList.remove('widget-disabled');
-        if (widget) widget.show();
-        console.log(`Widget ${widgetId} enabled`);
-    }
-
-    saveWidgetSettings();
-    
-    // Emit widget toggle event
-    if (window.widgetManager) {
-        window.widgetManager.emit('widget:toggle', {
-            widgetId,
-            enabled: enabledWidgets.has(widgetId)
-        });
-    }
-}
 
 // Debug function to test widget communication
 function testWidgetCommunication() {
