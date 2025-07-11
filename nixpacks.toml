@@ -1,16 +1,18 @@
-[phases.build]
-cmds = [
-  "npm install",
-  "npm run build-all",
-  "pip install -r requirements.txt"
-]
-
 [phases.setup]
 nixPkgs = ["nodejs", "npm", "python3", "python3Packages.pip"]
 
+[phases.build]
+cmds = [
+  "cp package.railway.json package.json",
+  "npm install",
+  "npm run postinstall",
+  "pip install -r requirements.simple.txt"
+]
+
 [start]
-cmd = "gunicorn main:app --bind 0.0.0.0:$PORT"
+cmd = "gunicorn main:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120"
 
 [variables]
 FLASK_ENV = "production"
 FLASK_APP = "main.py"
+PYTHONPATH = "/app"

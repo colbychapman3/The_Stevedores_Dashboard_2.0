@@ -1,0 +1,54 @@
+# Railway ignore file - exclude files that cause build issues
+
+# Development files that can cause Railway build issues
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Large development dependencies
+static/dist/
+webpack.config.js
+.babelrc
+
+# Documentation that might cause issues
+docs/
+dev-tools/
+*.md
+!RAILWAY_DEPLOYMENT.md
+
+# Testing files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Development environment
+.env.development
+.env.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git files
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt

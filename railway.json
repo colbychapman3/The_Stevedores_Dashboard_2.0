@@ -2,16 +2,17 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install && npm run build-all && pip install -r requirements.txt"
+    "buildCommand": "cp package.railway.json package.json && npm install && npm run postinstall && pip install -r requirements.simple.txt"
   },
   "deploy": {
-    "startCommand": "gunicorn main:app --bind 0.0.0.0:$PORT",
+    "startCommand": "gunicorn main:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   },
   "env": {
     "FLASK_ENV": "production",
     "FLASK_APP": "main.py",
-    "PORT": "$PORT"
+    "PORT": "$PORT",
+    "PYTHONPATH": "/app"
   }
 }
