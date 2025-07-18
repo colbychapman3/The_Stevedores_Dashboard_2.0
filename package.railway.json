@@ -1,0 +1,17 @@
+{
+  "name": "stevedores-dashboard",
+  "version": "2.0.0",
+  "description": "Maritime operations management system",
+  "main": "main.py",
+  "scripts": {
+    "build-css": "npx tailwindcss -i ./static/src/input.css -o ./static/dist/output.css --minify",
+    "build": "echo 'Build complete - using pre-built assets'",
+    "postinstall": "mkdir -p static/dist && npm run build-css"
+  },
+  "dependencies": {
+    "tailwindcss": "^3.3.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}

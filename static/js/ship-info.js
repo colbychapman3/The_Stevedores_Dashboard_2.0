@@ -8,6 +8,80 @@ let hourlyQuantities = {};
 let customizeMode = false;
 let widgetOrder = ['hourly-productivity', 'deck-progress', 'zone-allocation', 'hourly-tracker'];
 let enabledWidgets = new Set(['hourly-productivity', 'deck-progress', 'zone-allocation', 'hourly-tracker']);
+let registeredWidgets = new Map();
+
+// Enhanced error handling and notification system
+function showErrorNotification(message, duration = 5000) {
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 max-w-sm';
+    notification.innerHTML = `
+        <div class="flex items-center">
+            <i class="fas fa-exclamation-triangle mr-2"></i>
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, duration);
+}
+
+function showSuccessNotification(message, duration = 3000) {
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 max-w-sm';
+    notification.innerHTML = `
+        <div class="flex items-center">
+            <i class="fas fa-check-circle mr-2"></i>
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, duration);
+}
+
+// Offline functionality setup
+function setupOfflineHandlers() {
+    // Listen for service worker messages
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', event => {
+            const { action, data } = event.data;
+            
+            if (action === 'SYNC_DATA' && currentShipId) {
+                loadShipData(currentShipId);
+            }
+        });
+    }
+    
+    // Handle online/offline status changes
+    window.addEventListener('online', () => {
+        console.log('Back online - refreshing ship data');
+        showSuccessNotification('Reconnected! Syncing latest data...');
+        if (currentShipId) {
+            loadShipData(currentShipId);
+        }
+    });
+    
+    window.addEventListener('offline', () => {
+        console.log('Gone offline - using cached data');
+        showErrorNotification('You are now offline. Some features may be limited.', 3000);
+    });
+}
 
 // Global variables for auto-update
 let autoUpdateInterval;
@@ -18,6 +92,11 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing Ship Info Dashboard...');
     
     try {
+        // Initialize offline functionality first
+        if (window.offlineStorage) {
+            setupOfflineHandlers();
+        }
+        
         const urlParams = new URLSearchParams(window.location.search);
         const shipId = urlParams.get('ship');
         
@@ -45,6 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Initialize charts after a short delay to ensure DOM is ready
         setTimeout(() => {
             initializeCharts();
+            initializeWidgetSystem();
             
             // Test widget functions after initialization
             console.log('Dashboard initialization complete. Use testAllWidgetFunctions() to test all widgets.');
@@ -567,26 +647,66 @@ function populateShipData(ship) {
 async function loadShipData(shipId) {
     console.log('Attempting to load ship data for ID:', shipId);
     try {
-        const response = await fetch(`/api/ships/${shipId}`);
-        if (response.ok) {
-            const shipData = await response.json();
-            console.log('Received ship data:', shipData);
-            if (shipData && shipData.id) {
-                currentShip = shipData;
-                populateShipData(shipData);
-                initializeData();
-                setTimeout(() => {
-                    initializeCharts();
-                }, 100);
-
-                   startAutoUpdate();
-                return;
+        let shipData;
+        
+        // Use offline storage manager if available
+        if (window.offlineStorage) {
+            const allShips = await window.offlineStorage.apiCall('/api/ships');
+            shipData = allShips.find(ship => ship.id == shipId);
+        } else {
+            const response = await fetch(`/api/ships/${shipId}`);
+            if (response.ok) {
+                shipData = await response.json();
+            } else {
+                throw new Error(`HTTP ${response.status}`);
             }
         }
-        console.log('No valid ship data found, loading default state');
-        loadSampleShipData();
+        
+        console.log('Received ship data:', shipData);
+        if (shipData && shipData.id) {
+            currentShip = shipData;
+            populateShipData(shipData);
+            initializeData();
+            setTimeout(() => {
+                initializeCharts();
+            }, 100);
+
+            startAutoUpdate();
+            
+            // Show offline indicator if data is from cache
+            if (!navigator.onLine) {
+                showErrorNotification('Displaying cached data (offline)', 2000);
+            }
+            return;
+        } else {
+            throw new Error('Ship not found');
+        }
     } catch (error) {
         console.error('Error loading ship data:', error);
+        
+        // Try to get cached data from local storage as fallback
+        try {
+            const cachedShips = localStorage.getItem('ships_data_v2');
+            if (cachedShips) {
+                const ships = JSON.parse(cachedShips);
+                const cachedShip = ships.find(ship => ship.id == shipId);
+                if (cachedShip) {
+                    currentShip = cachedShip;
+                    populateShipData(cachedShip);
+                    initializeData();
+                    setTimeout(() => {
+                        initializeCharts();
+                    }, 100);
+                    showErrorNotification('Showing cached ship data', 3000);
+                    return;
+                }
+            }
+        } catch (cacheError) {
+            console.error('Error loading cached data:', cacheError);
+        }
+        
+        console.log('No valid ship data found, loading default state');
+        showErrorNotification('Unable to load ship data: ' + error.message);
         loadSampleShipData();
     }
 }
@@ -1229,38 +1349,6 @@ function goToMaster() {
     }
 }
 
-function updateProgress() {
-    if (!currentShip) {
-        alert('No ship data available. Please refresh the page or select a ship operation.');
-        return;
-    }
-
-    const currentProgress = currentShip.progress || 0;
-    const newProgress = prompt(`Enter new progress percentage (current: ${currentProgress}%):`, currentProgress);
-
-    if (newProgress === null || newProgress === '') return;
-
-    const progress = parseFloat(newProgress);
-    if (isNaN(progress) || progress < 0 || progress > 100) {
-        alert('Please enter a valid percentage between 0 and 100');
-        return;
-    }
-
-    if (!currentShip.id) {
-        // If no ship ID, just update locally
-        currentShip.progress = progress;
-        document.getElementById('completionValue').textContent = `${progress}%`;
-        const calculatedProgressElement = document.getElementById('calculatedProgress');
-        if (calculatedProgressElement) {
-            calculatedProgressElement.textContent = `${progress}%`;
-        }
-        alert('Progress updated locally!');
-        console.log('Progress updated locally to:', progress + '%');
-        return;
-    }
-
-    updateShipProgress(progress);
-}
 
 async function updateShipProgress(progress) {
     try {
@@ -1991,4 +2079,185 @@ function saveInventoryChanges() {
 
 function cancelInventoryEdit() {
     toggleInventoryEdit();
+}
+
+// Initialize the new widget system
+function initializeWidgetSystem() {
+    if (!window.widgetManager || !window.WidgetFactory) {
+        console.warn('Widget system not available. Make sure widget-manager.js and widgets.js are loaded.');
+        return;
+    }
+
+    console.log('Initializing widget system...');
+
+    // Clear existing widgets
+    registeredWidgets.clear();
+
+    // Initialize each widget
+    widgetOrder.forEach(widgetId => {
+        const element = document.querySelector(`[data-widget-id="${widgetId}"]`);
+        if (!element) {
+            console.warn(`Widget element not found for ${widgetId}`);
+            return;
+        }
+
+        try {
+            // Create widget instance using factory
+            const widget = window.WidgetFactory.createWidget(widgetId, widgetId, element, {
+                autoUpdate: true,
+                showLoader: true
+            });
+
+            // Register with widget manager
+            if (window.widgetManager.registerWidget(widgetId, widget)) {
+                registeredWidgets.set(widgetId, widget);
+                console.log(`Widget ${widgetId} initialized successfully`);
+
+                // Update widget visibility based on enabled state
+                if (enabledWidgets.has(widgetId)) {
+                    widget.show();
+                } else {
+                    widget.hide();
+                }
+
+                // Initialize with current ship data if available
+                if (currentShip) {
+                    window.widgetManager.updateWidgetData(widgetId, currentShip);
+                }
+            }
+        } catch (error) {
+            console.error(`Error initializing widget ${widgetId}:`, error);
+        }
+    });
+
+    // Setup widget event listeners
+    setupWidgetEventListeners();
+
+    // Update widgets with current data
+    if (currentShip) {
+        updateWidgetsWithShipData(currentShip);
+    }
+
+    console.log(`Widget system initialized with ${registeredWidgets.size} widgets`);
+}
+
+// Setup event listeners for widget communication
+function setupWidgetEventListeners() {
+    if (!window.widgetManager) return;
+
+    // Listen for productivity updates to update other widgets
+    window.widgetManager.eventTarget.addEventListener('productivity:update', (event) => {
+        console.log('Productivity update received:', event.detail);
+        
+        // Update metrics display
+        updateMetricsFromProductivity(event.detail);
+    });
+
+    // Listen for deck progress updates
+    window.widgetManager.eventTarget.addEventListener('deck:update', (event) => {
+        console.log('Deck progress update received:', event.detail);
+        
+        // Update overall progress if ship data exists
+        if (currentShip) {
+            currentShip.progress = event.detail.totalProgress;
+            updateShipProgressDisplay(event.detail.totalProgress);
+        }
+    });
+
+    // Listen for zone allocation updates
+    window.widgetManager.eventTarget.addEventListener('zone:update', (event) => {
+        console.log('Zone allocation update received:', event.detail);
+        
+        // Update efficiency metrics
+        updateEfficiencyDisplay(event.detail.avgEfficiency);
+    });
+
+    // Listen for general widget errors
+    window.widgetManager.eventTarget.addEventListener('widget:error', (event) => {
+        console.error(`Widget error in ${event.detail.widgetId}:`, event.detail.error);
+        showErrorNotification(`Widget ${event.detail.widgetId} encountered an error: ${event.detail.error}`);
+    });
+}
+
+// Update widgets when ship data changes
+function updateWidgetsWithShipData(shipData) {
+    if (!window.widgetManager) return;
+
+    console.log('Updating widgets with ship data:', shipData);
+
+    // Emit ship data update event
+    window.widgetManager.emit('widget:broadcast', {
+        type: 'shipDataUpdate',
+        shipData: shipData
+    });
+
+    // Update individual widgets
+    registeredWidgets.forEach((widget, widgetId) => {
+        window.widgetManager.updateWidgetData(widgetId, shipData);
+    });
+}
+
+// Update metrics from productivity data
+function updateMetricsFromProductivity(productivityData) {
+    const avgRateElement = document.getElementById('avgProductivityRate');
+    if (avgRateElement && productivityData.avgRate) {
+        avgRateElement.textContent = `${Math.round(productivityData.avgRate)} vehicles/hour`;
+    }
+}
+
+// Update ship progress display
+function updateShipProgressDisplay(progress) {
+    const progressElements = document.querySelectorAll('.progress-percentage');
+    progressElements.forEach(element => {
+        element.textContent = `${progress}%`;
+    });
+
+    const progressBars = document.querySelectorAll('.progress-bar');
+    progressBars.forEach(bar => {
+        bar.style.width = `${progress}%`;
+    });
+}
+
+// Update efficiency display
+function updateEfficiencyDisplay(efficiency) {
+    const efficiencyElement = document.getElementById('overallEfficiency');
+    if (efficiencyElement) {
+        efficiencyElement.textContent = `${efficiency}%`;
+        
+        // Update color based on efficiency
+        efficiencyElement.className = efficiency >= 90 ? 'text-green-600' : 
+                                     efficiency >= 75 ? 'text-yellow-600' : 'text-red-600';
+    }
+}
+
+
+// Debug function to test widget communication
+function testWidgetCommunication() {
+    if (!window.widgetManager) {
+        console.error('Widget manager not available');
+        return;
+    }
+
+    console.log('Testing widget communication...');
+    
+    // Test data update
+    const testShipData = {
+        vesselName: 'Test Vessel',
+        totalVehicles: 1500,
+        progress: 65,
+        expectedRate: 175
+    };
+
+    updateWidgetsWithShipData(testShipData);
+    
+    // Test individual widget updates
+    setTimeout(() => {
+        window.widgetManager.emit('productivity:update', {
+            avgRate: 180,
+            hourlyData: [150, 160, 170, 180, 185, 175, 170, 165],
+            labels: ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+        });
+    }, 1000);
+
+    console.log('Widget communication test completed');
 }

@@ -1,9 +1,21 @@
 let currentStep = 1;
 let extractedData = {};
 
+// Initialize wizard when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Load any saved wizard data
+    loadSavedWizardData();
+    
+    // Auto-save form data as user types
+    setupAutoSave();
+});
+
 // Wizard navigation functions
 function nextStep(step) {
     if (validateStep(step)) {
+        // Save current step data
+        saveStepData(step);
+        
         document.getElementById(`step${step}`).classList.add('hidden');
         document.getElementById(`step${step + 1}`).classList.remove('hidden');
 
@@ -21,6 +33,9 @@ function nextStep(step) {
 }
 
 function prevStep(step) {
+    // Save current step data before going back
+    saveStepData(step);
+    
     document.getElementById(`step${step}`).classList.add('hidden');
     document.getElementById(`step${step - 1}`).classList.remove('hidden');
 
@@ -33,17 +48,243 @@ function prevStep(step) {
 }
 
 function validateStep(step) {
-    // Basic validation - ensure required fields are filled
+    // Comprehensive validation for all steps
     if (step === 1) {
+        // Step 1: Vessel Information
         const vesselName = document.getElementById('vesselName').value.trim();
         const shippingLine = document.getElementById('shippingLine').value;
         const vesselType = document.getElementById('vesselType').value;
+        const port = document.getElementById('port').value;
+        const operationDate = document.getElementById('operationDate').value;
+        
         if (!vesselName || !shippingLine || !vesselType) {
-            alert('Please fill in the vessel name, shipping line, and vessel type.');
+            showValidationError('Please fill in the vessel name, shipping line, and vessel type.');
+            return false;
+        }
+        
+        if (!port) {
+            showValidationError('Please select a port.');
+            return false;
+        }
+        
+        if (!operationDate) {
+            showValidationError('Please select an operation date.');
+            return false;
+        }
+        
+        // Validate date is not too far in the past
+        const selectedDate = new Date(operationDate);
+        const today = new Date();
+        const daysDiff = (today - selectedDate) / (1000 * 60 * 60 * 24);
+        
+        if (daysDiff > 30) {
+            const confirm = showConfirmDialog('The selected date is more than 30 days ago. Are you sure you want to continue?');
+            if (!confirm) return false;
+        }
+        
+    } else if (step === 2) {
+        // Step 2: Cargo Configuration
+        const shippingLine = document.getElementById('shippingLine').value;
+        
+        if (shippingLine === 'K-Line') {
+            // Validate K-Line specific fields
+            const brvAutomobiles = parseInt(document.getElementById('brvAutomobiles')?.value) || 0;
+            const zeeAutomobiles = parseInt(document.getElementById('zeeAutomobiles')?.value) || 0;
+            const souAutomobiles = parseInt(document.getElementById('souAutomobiles')?.value) || 0;
+            const totalAutomobiles = parseInt(document.getElementById('totalAutomobiles')?.value) || 0;
+            
+            const calculatedTotal = brvAutomobiles + zeeAutomobiles + souAutomobiles;
+            
+            if (Math.abs(calculatedTotal - totalAutomobiles) > 5) {
+                showValidationError(`Total automobiles mismatch: ${calculatedTotal} (calculated) vs ${totalAutomobiles} (entered). Please verify the numbers.`);
+                return false;
+            }
+        } else {
+            // Validate single terminal fields
+            const totalAutomobiles = parseInt(document.getElementById('totalAutomobiles')?.value) || 0;
+            const heavyEquipment = parseInt(document.getElementById('heavyEquipment')?.value) || 0;
+            
+            if (totalAutomobiles <= 0 && heavyEquipment <= 0) {
+                showValidationError('Please enter the number of automobiles and/or heavy equipment.');
+                return false;
+            }
+        }
+        
+    } else if (step === 3) {
+        // Step 3: Operational Parameters
+        const expectedRate = parseFloat(document.getElementById('expectedRate')?.value) || 0;
+        const totalDrivers = parseInt(document.getElementById('totalDrivers')?.value) || 0;
+        const shiftStart = document.getElementById('shiftStart')?.value;
+        const shiftEnd = document.getElementById('shiftEnd')?.value;
+        
+        if (expectedRate <= 0) {
+            showValidationError('Please enter a valid expected rate (cars per hour).');
+            return false;
+        }
+        
+        if (totalDrivers <= 0) {
+            showValidationError('Please enter the number of drivers.');
+            return false;
+        }
+        
+        if (!shiftStart || !shiftEnd) {
+            showValidationError('Please select shift start and end times.');
+            return false;
+        }
+        
+        // Validate shift times
+        const startTime = new Date('2000-01-01T' + shiftStart);
+        const endTime = new Date('2000-01-01T' + shiftEnd);
+        
+        if (endTime <= startTime) {
+            showValidationError('Shift end time must be after shift start time.');
+            return false;
+        }
+        
+        // Validate TICO vehicle counts
+        const numVans = parseInt(document.getElementById('numVans')?.value) || 0;
+        const numStationWagons = parseInt(document.getElementById('numStationWagons')?.value) || 0;
+        const totalCapacity = (numVans * 7) + (numStationWagons * 5);
+        
+        if (totalCapacity > 0 && totalCapacity < totalDrivers) {
+            const confirm = showConfirmDialog(`Vehicle capacity (${totalCapacity}) is less than total drivers (${totalDrivers}). Continue anyway?`);
+            if (!confirm) return false;
+        }
+        
+    } else if (step === 4) {
+        // Step 4: Final Review
+        // Additional validation before submission
+        const vesselName = document.getElementById('vesselName').value.trim();
+        const totalAutomobiles = parseInt(document.getElementById('totalAutomobiles')?.value) || 0;
+        const totalDrivers = parseInt(document.getElementById('totalDrivers')?.value) || 0;
+        
+        if (!vesselName || (totalAutomobiles <= 0 && totalDrivers <= 0)) {
+            showValidationError('Please complete all required fields before generating the dashboard.');
             return false;
         }
     }
+    
     return true;
+}
+
+function showValidationError(message) {
+    // Create or update validation error display
+    let errorDiv = document.getElementById('validation-error');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.id = 'validation-error';
+        errorDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4';
+        
+        // Insert at the top of the current step
+        const currentStepDiv = document.getElementById(`step${currentStep}`);
+        currentStepDiv.insertBefore(errorDiv, currentStepDiv.firstChild);
+    }
+    
+    errorDiv.innerHTML = `
+        <div class="flex items-center">
+            <i class="fas fa-exclamation-triangle mr-2"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        if (errorDiv.parentNode) {
+            errorDiv.parentNode.removeChild(errorDiv);
+        }
+    }, 5000);
+    
+    // Scroll to top of current step
+    document.getElementById(`step${currentStep}`).scrollIntoView({ behavior: 'smooth' });
+}
+
+function showConfirmDialog(message) {
+    return confirm(message);
+}
+
+// Auto-save functionality
+function setupAutoSave() {
+    const inputs = document.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+        input.addEventListener('change', () => {
+            saveStepData(currentStep);
+        });
+        
+        // Also save on input for text fields
+        if (input.type === 'text' || input.type === 'number' || input.tagName === 'TEXTAREA') {
+            input.addEventListener('input', debounce(() => {
+                saveStepData(currentStep);
+            }, 1000));
+        }
+    });
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+function saveStepData(step) {
+    if (!window.offlineStorage) return;
+    
+    const formData = collectFormData();
+    const wizardData = {
+        currentStep: step,
+        formData: formData,
+        timestamp: new Date().toISOString()
+    };
+    
+    localStorage.setItem('wizard_progress', JSON.stringify(wizardData));
+}
+
+function loadSavedWizardData() {
+    try {
+        const savedData = localStorage.getItem('wizard_progress');
+        if (savedData) {
+            const wizardData = JSON.parse(savedData);
+            
+            // Check if data is recent (within 24 hours)
+            const savedTime = new Date(wizardData.timestamp);
+            const now = new Date();
+            const hoursDiff = (now - savedTime) / (1000 * 60 * 60);
+            
+            if (hoursDiff < 24) {
+                if (confirm('Found saved wizard progress. Would you like to restore it?')) {
+                    populateFormFields(wizardData.formData);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load saved wizard data:', error);
+    }
+}
+
+function collectFormData() {
+    const data = {};
+    const inputs = document.querySelectorAll('input, select, textarea');
+    
+    inputs.forEach(input => {
+        if (input.id) {
+            if (input.type === 'checkbox') {
+                data[input.id] = input.checked;
+            } else if (input.type === 'radio') {
+                if (input.checked) {
+                    data[input.name] = input.value;
+                }
+            } else {
+                data[input.id] = input.value;
+            }
+        }
+    });
+    
+    return data;
 }
 
 // Wizard file upload functions
@@ -203,131 +444,6 @@ This might indicate the document format is not recognized. Please check the cons
     });
 }
 
-function populateFormFields(data) {
-    console.log('Populating form fields with data:', data);
-
-    // Helper function to safely set field values
-    function safeSetValue(fieldId, value) {
-        const field = document.getElementById(fieldId);
-        if (field && value !== undefined && value !== null && value !== '') {
-            const originalValue = field.value;
-            field.value = value;
-            console.log(`Set ${fieldId}: '${originalValue}' -> '${value}'}`);
-
-            // Trigger change event for any listeners
-            field.dispatchEvent(new Event('change'));
-        } else if (!field) {
-            console.warn(`Field with ID '${fieldId}' not found`);
-        } else {
-            console.log(`Skipping ${fieldId} - no value provided (${value})`);
-        }
-    }
-
-    // Helper function to safely set select values
-    function safeSetSelect(fieldId, value) {
-        const field = document.getElementById(fieldId);
-        if (field && value !== undefined && value !== null && value !== '') {
-            // Try exact match first
-            const options = Array.from(field.options);
-            let matchFound = false;
-
-            for (let option of options) {
-                if (option.value === value || option.text === value) {
-                    field.value = option.value;
-                    matchFound = true;
-                    console.log(`Set select ${fieldId}: '${value}' (exact match)`);
-                    break;
-                }
-            }
-
-            // Try partial match for berth numbers
-            if (!matchFound && fieldId === 'berthLocation') {
-                for (let option of options) {
-                    if (option.value.includes('Berth') && value.includes(option.value.replace('Berth ', ''))) {
-                        field.value = option.value;
-                        matchFound = true;
-                        console.log(`Set select ${fieldId}: '${value}' (partial match)`);
-                        break;
-                    }
-                }
-            }
-
-            if (!matchFound) {
-                console.warn(`Could not match ${fieldId}:`, value, 'Available options:', options.map(o => `${o.value}:${o.text}`));
-            }
-
-            // Trigger change event
-            field.dispatchEvent(new Event('change'));
-        } else if (!field) {
-            console.warn(`Select field with ID '${fieldId}' not found`);
-        }
-    }
-
-    // Populate Step 1 fields
-    safeSetValue('vesselName', data.vesselName);
-    safeSetSelect('vesselType', data.vesselType);
-    safeSetValue('port', data.port);
-    safeSetValue('operationDate', data.operationDate);
-    safeSetValue('company', data.company);
-    safeSetSelect('operationType', data.operationType);
-
-    // Team assignments
-    safeSetValue('autoOpsLead', data.autoOperationsLead);
-    safeSetValue('autoOpsAssistant', data.autoOperationsAssistant);
-    safeSetValue('heavyOpsLead', data.heavyHeavyLead);
-    safeSetValue('heavyOpsAssistant', data.heavyHeavyAssistant);
-
-    // Berth location - try multiple possible field names
-    const berthValue = data.berthLocation || data.berth || data.berthAssignment;
-    if (berthValue) {
-        console.log('Setting berth location:', berthValue);
-        safeSetSelect('berthLocation', berthValue);
-    }
-    safeSetValue('operationManager', data.operationManager);
-
-    // Populate Step 2 fields - use multiple possible field names
-    safeSetValue('totalAutomobiles', data.totalAutomobilesDischarge || data.totalAutomobiles || data.automobiles);
-    safeSetValue('heavyEquipment', data.heavyEquipmentDischarge || data.heavyEquipment);
-    safeSetValue('brvTarget', data.brvTarget);
-    safeSetValue('souTarget', data.souTarget);
-
-    // Zone fields
-    safeSetValue('zoneAVehicles', data.zoneA || data.zoneAVehicles);
-    safeSetValue('zoneADescription', data.zoneADescription);
-    safeSetValue('zoneBVehicles', data.zoneB || data.zoneBVehicles);
-    safeSetValue('zoneBDescription', data.zoneBDescription);
-    safeSetValue('zoneCVehicles', data.zoneC || data.zoneCVehicles);
-    safeSetValue('zoneCDescription', data.zoneCDescription);
-
-    // Populate Step 3 fields
-    safeSetValue('expectedRate', data.expectedRate);
-    safeSetValue('totalDrivers', data.totalDrivers);
-    safeSetValue('shiftStart', data.shiftStart);
-    safeSetValue('shiftEnd', data.shiftEnd);
-    safeSetValue('breakDuration', data.breakDuration);
-
-    // Vehicle counts
-    if (data.numVans) {
-        safeSetValue('numVans', data.numVans);
-        generateVehicleIdFields();
-    }
-    if (data.numStationWagons) {
-        safeSetValue('numStationWagons', data.numStationWagons);
-        generateVehicleIdFields();
-    }
-
-    // Populate ZEE fields
-    safeSetValue('zeeTarget', data.zeeTarget);
-    safeSetValue('zeeAutomobiles', data.zeeAutomobiles);
-    safeSetValue('zeeHeavyEquipment', data.zeeHeavyEquipment);
-    safeSetValue('zeeElectricVehicles', data.zeeElectricVehicles);
-    safeSetValue('zeeStaticCargo', data.zeeStaticCargo);
-    safeSetValue('zeeCargoType', data.zeeCargoType);
-    safeSetValue('zeeCargoValue', data.zeeCargoValue);
-    safeSetSelect('zeePriority', data.zeePriority);
-
-    console.log('Form population completed');
-}
 
 function updateFormField(fieldId, value) {
     const field = document.getElementById(fieldId);

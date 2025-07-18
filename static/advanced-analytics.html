@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Analytics - Stevedores Dashboard</title>
+    <link href="dist/output.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .widget {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .widget:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        
+        .widget-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .widget-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        
+        .widget-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .widget-action {
+            padding: 5px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .widget-action:hover {
+            background: #f8fafc;
+            border-color: #3b82f6;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 15px;
+        }
+        
+        .kpi-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #3b82f6;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .kpi-label {
+            text-align: center;
+            color: #64748b;
+            font-size: 14px;
+        }
+        
+        .anomaly-alert {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+            color: #dc2626;
+        }
+        
+        .prediction-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 10px 0;
+        }
+        
+        .export-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 1000;
+            min-width: 150px;
+        }
+        
+        .export-option {
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .export-option:hover {
+            background: #f8fafc;
+        }
+        
+        .dashboard-controls {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .control-select {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: white;
+        }
+        
+        .refresh-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .widget-large {
+            grid-column: span 2;
+        }
+        
+        .widget-xlarge {
+            grid-column: span 3;
+        }
+        
+        .loading-placeholder {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            background: #f8fafc;
+            border-radius: 8px;
+            color: #64748b;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <h1 class="text-2xl font-bold text-gray-900">Advanced Analytics</h1>
+                <div class="flex items-center space-x-2">
+                    <span class="refresh-indicator"></span>
+                    <span class="text-sm text-gray-500">Live Data</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button onclick="exportDashboard('pdf')" class="btn btn-primary">
+                    <i class="fas fa-download mr-2"></i>Export Report
+                </button>
+                <button onclick="showDashboardBuilder()" class="btn btn-secondary">
+                    <i class="fas fa-plus mr-2"></i>Add Widget
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Dashboard Controls -->
+    <div class="dashboard-controls mx-6 mt-6">
+        <div class="control-group">
+            <label class="text-sm font-medium text-gray-700">Dashboard:</label>
+            <select id="dashboardSelect" class="control-select" onchange="switchDashboard(this.value)">
+                <option value="operations">Operations Overview</option>
+                <option value="performance">Performance Analytics</option>
+                <option value="predictive">Predictive Analytics</option>
+                <option value="custom">Custom Dashboard</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label class="text-sm font-medium text-gray-700">Time Range:</label>
+            <select id="timeRangeSelect" class="control-select" onchange="updateTimeRange(this.value)">
+                <option value="1h">Last Hour</option>
+                <option value="24h" selected>Last 24 Hours</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="custom">Custom Range</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <button onclick="refreshDashboard()" class="btn btn-secondary">
+                <i class="fas fa-sync-alt mr-2"></i>Refresh
+            </button>
+            <button onclick="toggleAutoRefresh()" class="btn btn-secondary" id="autoRefreshBtn">
+                <i class="fas fa-play mr-2"></i>Auto Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Dashboard Grid -->
+    <div id="dashboardGrid" class="dashboard-grid mx-6">
+        <!-- KPI Widgets -->
+        <div class="widget" id="totalShipsWidget">
+            <div class="widget-header">
+                <div class="widget-title">Total Ships</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="exportWidget('totalShips')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="kpi-value" id="totalShipsValue">--</div>
+            <div class="kpi-label">Active in Port</div>
+        </div>
+
+        <div class="widget" id="activeOpsWidget">
+            <div class="widget-header">
+                <div class="widget-title">Active Operations</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="exportWidget('activeOps')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="kpi-value" id="activeOpsValue">--</div>
+            <div class="kpi-label">Currently Loading/Unloading</div>
+        </div>
+
+        <!-- Throughput Trend Chart -->
+        <div class="widget widget-large" id="throughputTrendWidget">
+            <div class="widget-header">
+                <div class="widget-title">Throughput Trend</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="toggleChartType('throughputTrend')">
+                        <i class="fas fa-chart-line"></i>
+                    </button>
+                    <button class="widget-action" onclick="exportWidget('throughputTrend')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="throughputTrendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Port Utilization Gauge -->
+        <div class="widget" id="portUtilizationWidget">
+            <div class="widget-header">
+                <div class="widget-title">Port Utilization</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="exportWidget('portUtilization')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div id="portUtilizationChart"></div>
+            </div>
+        </div>
+
+        <!-- Berth Activity Heatmap -->
+        <div class="widget widget-large" id="berthActivityWidget">
+            <div class="widget-header">
+                <div class="widget-title">Berth Activity Heatmap</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="exportWidget('berthActivity')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div id="berthActivityChart"></div>
+            </div>
+        </div>
+
+        <!-- Operations Timeline -->
+        <div class="widget widget-xlarge" id="operationsTimelineWidget">
+            <div class="widget-header">
+                <div class="widget-title">Operations Timeline</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="exportWidget('operationsTimeline')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div id="operationsTimelineChart"></div>
+            </div>
+        </div>
+
+        <!-- Predictive Analytics -->
+        <div class="widget widget-large" id="predictiveAnalyticsWidget">
+            <div class="widget-header">
+                <div class="widget-title">Predictive Analytics</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="exportWidget('predictiveAnalytics')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="predictiveContent">
+                <div class="prediction-card">
+                    <h4 class="font-semibold mb-2">Traffic Forecast</h4>
+                    <p class="text-sm opacity-90">Next 24 hours: <span id="trafficForecast">--</span> vessels</p>
+                    <p class="text-sm opacity-90">Confidence: <span id="trafficConfidence">--</span>%</p>
+                </div>
+                <div class="prediction-card">
+                    <h4 class="font-semibold mb-2">Maintenance Alerts</h4>
+                    <p class="text-sm opacity-90">Equipment requiring attention: <span id="maintenanceAlerts">--</span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Anomaly Detection -->
+        <div class="widget" id="anomalyDetectionWidget">
+            <div class="widget-header">
+                <div class="widget-title">Anomaly Detection</div>
+                <div class="widget-actions">
+                    <button class="widget-action" onclick="exportWidget('anomalyDetection')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="anomalyContent">
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fas fa-shield-alt text-3xl mb-2"></i>
+                    <p>No anomalies detected</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Menu -->
+    <div id="exportMenu" class="export-menu" style="display: none;">
+        <div class="export-option" onclick="exportDashboard('pdf')">
+            <i class="fas fa-file-pdf mr-2"></i>PDF Report
+        </div>
+        <div class="export-option" onclick="exportDashboard('excel')">
+            <i class="fas fa-file-excel mr-2"></i>Excel Spreadsheet
+        </div>
+        <div class="export-option" onclick="exportDashboard('csv')">
+            <i class="fas fa-file-csv mr-2"></i>CSV Data
+        </div>
+        <div class="export-option" onclick="exportDashboard('json')">
+            <i class="fas fa-file-code mr-2"></i>JSON Data
+        </div>
+        <div class="export-option" onclick="exportDashboard('png')">
+            <i class="fas fa-image mr-2"></i>PNG Image
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="dist/advanced-analytics.js"></script>
+    <script src="dist/advanced-pwa.js"></script>
+    
+    <script>
+        // Dashboard Management
+        let currentDashboard = 'operations';
+        let autoRefreshInterval = null;
+        let isAutoRefreshEnabled = false;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDashboard();
+            loadDashboardData();
+            setupEventListeners();
+        });
+
+        function initializeDashboard() {
+            console.log('Initializing Advanced Analytics Dashboard...');
+            
+            // Initialize charts
+            initializeCharts();
+            
+            // Load initial data
+            loadDashboardData();
+            
+            // Setup auto-refresh
+            setupAutoRefresh();
+        }
+
+        function initializeCharts() {
+            // Initialize throughput trend chart
+            const throughputCtx = document.getElementById('throughputTrendChart').getContext('2d');
+            window.throughputChart = new Chart(throughputCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Containers/Hour',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Initialize port utilization gauge
+            Plotly.newPlot('portUtilizationChart', [{
+                type: 'indicator',
+                mode: 'gauge+number',
+                value: 0,
+                title: { text: 'Utilization %' },
+                gauge: {
+                    axis: { range: [null, 100] },
+                    bar: { color: '#3b82f6' },
+                    steps: [
+                        { range: [0, 50], color: '#22c55e' },
+                        { range: [50, 80], color: '#f59e0b' },
+                        { range: [80, 100], color: '#ef4444' }
+                    ]
+                }
+            }], {
+                responsive: true,
+                margin: { t: 25, r: 25, l: 25, b: 25 }
+            });
+
+            // Initialize berth activity heatmap
+            const berthData = generateBerthHeatmapData();
+            Plotly.newPlot('berthActivityChart', [{
+                z: berthData.values,
+                x: berthData.times,
+                y: berthData.berths,
+                type: 'heatmap',
+                colorscale: 'Viridis'
+            }], {
+                title: 'Berth Activity (24h)',
+                responsive: true,
+                margin: { t: 40, r: 40, l: 80, b: 40 }
+            });
+
+            // Initialize operations timeline
+            const timelineData = generateTimelineData();
+            Plotly.newPlot('operationsTimelineChart', timelineData, {
+                title: 'Operations Timeline',
+                xaxis: { title: 'Time' },
+                yaxis: { title: 'Operations' },
+                responsive: true,
+                margin: { t: 40, r: 40, l: 120, b: 40 }
+            });
+        }
+
+        function loadDashboardData() {
+            // Simulate loading data
+            updateKPIs();
+            updateCharts();
+            updatePredictiveAnalytics();
+            updateAnomalyDetection();
+        }
+
+        function updateKPIs() {
+            // Simulate KPI updates
+            document.getElementById('totalShipsValue').textContent = Math.floor(Math.random() * 20) + 5;
+            document.getElementById('activeOpsValue').textContent = Math.floor(Math.random() * 8) + 2;
+        }
+
+        function updateCharts() {
+            // Update throughput chart
+            const labels = [];
+            const data = [];
+            const now = new Date();
+            
+            for (let i = 23; i >= 0; i--) {
+                const time = new Date(now.getTime() - i * 60 * 60 * 1000);
+                labels.push(time.toLocaleTimeString());
+                data.push(Math.floor(Math.random() * 50) + 20);
+            }
+            
+            window.throughputChart.data.labels = labels;
+            window.throughputChart.data.datasets[0].data = data;
+            window.throughputChart.update();
+
+            // Update port utilization
+            const utilization = Math.floor(Math.random() * 100);
+            Plotly.restyle('portUtilizationChart', 'value', [utilization]);
+        }
+
+        function updatePredictiveAnalytics() {
+            const forecast = Math.floor(Math.random() * 15) + 5;
+            const confidence = Math.floor(Math.random() * 20) + 80;
+            const maintenance = Math.floor(Math.random() * 5);
+            
+            document.getElementById('trafficForecast').textContent = forecast;
+            document.getElementById('trafficConfidence').textContent = confidence;
+            document.getElementById('maintenanceAlerts').textContent = maintenance;
+        }
+
+        function updateAnomalyDetection() {
+            const anomalies = Math.random() < 0.3; // 30% chance of anomalies
+            const content = document.getElementById('anomalyContent');
+            
+            if (anomalies) {
+                content.innerHTML = `
+                    <div class="anomaly-alert">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Anomaly Detected:</strong> Unusual throughput pattern detected at Berth 3
+                    </div>
+                `;
+            } else {
+                content.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-shield-alt text-3xl mb-2"></i>
+                        <p>No anomalies detected</p>
+                    </div>
+                `;
+            }
+        }
+
+        function generateBerthHeatmapData() {
+            const berths = ['Berth 1', 'Berth 2', 'Berth 3', 'Berth 4', 'Berth 5'];
+            const times = [];
+            const values = [];
+            
+            for (let i = 0; i < 24; i++) {
+                times.push(i + ':00');
+            }
+            
+            for (let i = 0; i < berths.length; i++) {
+                const row = [];
+                for (let j = 0; j < 24; j++) {
+                    row.push(Math.random());
+                }
+                values.push(row);
+            }
+            
+            return { berths, times, values };
+        }
+
+        function generateTimelineData() {
+            const operations = ['Loading Ship A', 'Unloading Ship B', 'Maintenance C', 'Loading Ship D'];
+            const traces = [];
+            
+            operations.forEach((op, i) => {
+                const start = new Date(Date.now() - Math.random() * 12 * 60 * 60 * 1000);
+                const end = new Date(start.getTime() + Math.random() * 4 * 60 * 60 * 1000);
+                
+                traces.push({
+                    x: [start, end],
+                    y: [op, op],
+                    mode: 'lines',
+                    line: { width: 20, color: `hsl(${i * 60}, 70%, 50%)` },
+                    name: op
+                });
+            });
+            
+            return traces;
+        }
+
+        function setupAutoRefresh() {
+            const refreshBtn = document.getElementById('autoRefreshBtn');
+            refreshBtn.addEventListener('click', toggleAutoRefresh);
+        }
+
+        function toggleAutoRefresh() {
+            const btn = document.getElementById('autoRefreshBtn');
+            
+            if (isAutoRefreshEnabled) {
+                clearInterval(autoRefreshInterval);
+                btn.innerHTML = '<i class="fas fa-play mr-2"></i>Auto Refresh';
+                isAutoRefreshEnabled = false;
+            } else {
+                autoRefreshInterval = setInterval(loadDashboardData, 30000); // 30 seconds
+                btn.innerHTML = '<i class="fas fa-pause mr-2"></i>Auto Refresh';
+                isAutoRefreshEnabled = true;
+            }
+        }
+
+        function refreshDashboard() {
+            loadDashboardData();
+        }
+
+        function switchDashboard(dashboardId) {
+            currentDashboard = dashboardId;
+            // In a real implementation, this would load different dashboard configurations
+            console.log('Switching to dashboard:', dashboardId);
+        }
+
+        function updateTimeRange(range) {
+            console.log('Updating time range:', range);
+            // In a real implementation, this would update data based on time range
+            loadDashboardData();
+        }
+
+        function exportDashboard(format) {
+            if (window.advancedAnalyticsManager) {
+                window.advancedAnalyticsManager.exportDashboard(currentDashboard, format);
+            } else {
+                console.log('Exporting dashboard as:', format);
+                // Fallback export logic
+                exportFallback(format);
+            }
+        }
+
+        function exportFallback(format) {
+            const data = {
+                dashboard: currentDashboard,
+                timestamp: new Date().toISOString(),
+                kpis: {
+                    totalShips: document.getElementById('totalShipsValue').textContent,
+                    activeOps: document.getElementById('activeOpsValue').textContent
+                }
+            };
+            
+            if (format === 'json') {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `dashboard-${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        function exportWidget(widgetId) {
+            console.log('Exporting widget:', widgetId);
+            // Widget-specific export logic
+        }
+
+        function toggleChartType(chartId) {
+            console.log('Toggling chart type for:', chartId);
+            // Chart type toggle logic
+        }
+
+        function showDashboardBuilder() {
+            console.log('Opening dashboard builder');
+            // Dashboard builder UI logic
+        }
+
+        function setupEventListeners() {
+            // Custom event listeners for advanced features
+            document.addEventListener('anomalyDetected', function(event) {
+                console.log('Anomaly detected:', event.detail);
+                updateAnomalyDetection();
+            });
+            
+            document.addEventListener('predictionUpdate', function(event) {
+                console.log('Prediction updated:', event.detail);
+                updatePredictiveAnalytics();
+            });
+        }
+
+        // Utility functions
+        function formatNumber(num) {
+            return new Intl.NumberFormat().format(num);
+        }
+
+        function formatDate(date) {
+            return new Intl.DateTimeFormat('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(date);
+        }
+    </script>
+</body>
+</html>

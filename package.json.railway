@@ -1,27 +1,25 @@
 {
   "name": "stevedores-dashboard",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Maritime operations management system for stevedoring companies",
   "main": "main.py",
   "scripts": {
     "build-css": "tailwindcss -i ./static/src/input.css -o ./static/dist/output.css --minify",
-    "watch-css": "tailwindcss -i ./static/src/input.css -o ./static/dist/output.css --watch",
     "build": "webpack --mode production",
-    "dev": "webpack --mode development --watch",
-    "analyze": "webpack-bundle-analyzer static/dist/stats.json",
     "build-all": "npm run build-css && npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "postinstall": "npm run build-all"
   },
-  "keywords": ["maritime", "stevedoring", "dashboard", "vessel", "operations"],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {},
-  "devDependencies": {
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {
     "@tailwindcss/cli": "^4.1.11",
-    "tailwindcss": "^4.1.11",
+    "tailwindcss": "^4.1.11"
+  },
+  "devDependencies": {
     "webpack": "^5.88.0",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^4.15.1",
     "babel-loader": "^9.1.2",
     "@babel/core": "^7.22.0",
     "@babel/preset-env": "^7.22.0",
@@ -31,7 +29,9 @@
     "css-minimizer-webpack-plugin": "^5.0.1",
     "terser-webpack-plugin": "^5.3.9",
     "compression-webpack-plugin": "^10.0.0",
-    "webpack-bundle-analyzer": "^4.9.0",
     "workbox-webpack-plugin": "^7.0.0"
-  }
+  },
+  "keywords": ["maritime", "stevedoring", "dashboard", "vessel", "operations"],
+  "author": "Stevedores Team",
+  "license": "MIT"
 }
